@@ -5,28 +5,37 @@
 #export DH_VERBOSE=1
 export FLIT_NO_NETWORK=True
 export FLIT_ROOT_INSTALL=1
+include /usr/share/dpkg/pkg-info.mk
 
 %:
-	dh $@ --with python3
-
-override_dh_auto_configure:
-
-override_dh_auto_build:
-
-override_dh_auto_install:
-	cp debian/build.py .
-	python3 build.py
-	rm -f build.py
-	dh_install
-
-override_dh_python3:
-	dh_python3 -p flit
+	dh $@ --with python3 --buildsystem=pybuild
 
 override_dh_auto_clean:
-	dh_clean
+	set -e; \
+	if [ -e _removed ]; then \
+		mv _removed/vendor flit_core/flit_core/; \
+		rmdir _removed; \
+	fi
+	dh_auto_clean --name flit
+	dh_auto_clean -d flit_core --name flit_core
+
+override_dh_auto_configure:
+	set -e; \
+	if [ -e flit_core/flit_core/vendor ]; then \
+		mkdir -p _removed; \
+		mv flit_core/flit_core/vendor _removed/; \
+	fi
+	pybuild --configure --name flit
+	pybuild --configure -d flit_core --name flit_core
+
+override_dh_auto_build:
+	pybuild --build --name flit
+	pybuild --build -d flit_core --name flit_core
+
+override_dh_auto_install:
+	pybuild --install --dest-dir debian/flit --name flit
+	pybuild --install --dest-dir debian/flit -d flit_core --name flit_core
+	sphinx-build -b man -D extensions='sphinx.ext.ifconfig' -D man_show_urls=True doc/ debian/
 
 override_dh_auto_test:
-	# Tests require unpackaged modules to run
-
-man:
-	help2man -n flit -s 1 -o debian/flit.1 --no-discard-stderr --no-info flit
+	pybuild --test -d flit_core --name flit_core --test-pytest --test-args="-k 'not test_find_in_path'"
