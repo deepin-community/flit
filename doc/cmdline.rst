@@ -39,11 +39,38 @@ Build a wheel and an sdist (tarball) from the package.
 
    Limit to building either ``wheel`` or ``sdist``.
 
+.. option:: --setup-py
+
+   Generate a ``setup.py`` file in the sdist, so it can be installed by older
+   versions of pip.
+
 .. option:: --no-setup-py
 
-   Don't generate a setup.py file in the sdist.
+   Don't generate a setup.py file in the sdist. This is the default.
    An sdist built without this will only work with tools that support PEP 517,
    but the wheel will still be usable by any compatible tool.
+
+   .. versionchanged:: 3.5
+
+      Generating ``setup.py`` disabled by default.
+
+.. option:: --use-vcs
+
+   Use the files checked in to git or mercurial as the starting list to include
+   in an sdist, and then apply inclusions and exclusions :ref:`from pyproject.toml
+   <pyproject_toml_sdist>`.
+
+   This is the default for now, but we're planning to switch to ``--no-use-vcs``
+   as the default in a future version.
+
+.. option:: --no-use-vcs
+
+   Create the sdist starting with only the files inside the installed module
+   or package, along with any inclusions and exclusions defined in pyproject.toml.
+
+   With this option, sdists from ``flit build`` are equivalent to those built
+   by tools calling Flit as a backend, such as `build
+   <https://pypa-build.readthedocs.io/en/stable/>`_.
 
 .. _publish_cmd:
 
@@ -60,16 +87,22 @@ or another repository.
    Limit to publishing either ``wheel`` or ``sdist``.
    You should normally publish the two formats together.
 
+.. option:: --setup-py
 .. option:: --no-setup-py
+.. option:: --use-vcs
+.. option:: --no-use-vcs
 
-   Don't generate a setup.py file in the sdist.
-   An sdist built without this will only work with tools that support PEP 517,
-   but the wheel will still be usable by any compatible tool.
+   These options affecting what goes in the sdist are described for
+   :ref:`build_cmd` above.
 
 .. option:: --repository <repository>
 
    Name of a repository to upload packages to. Should match a section in
    ``~/.pypirc``. The default is ``pypi``.
+
+.. option:: --pypirc <pypirc>
+
+   The .pypirc config file to be used. The default is ``~/.pypirc``.
 
 .. seealso:: :doc:`upload`
 
@@ -115,6 +148,15 @@ Flit guess.
    install all optional dependencies, or a comma-separated list of extras.
    Default depends on ``--deps``.
 
+.. option:: --only-deps
+
+   Install the dependencies of this package, but not the package itself.
+
+   This can be useful for e.g. building a container image, where your own code
+   is copied or mounted into the container at a later stage.
+
+   .. versionadded:: 3.8
+
 .. option:: --user
 
    Do a user-local installation. This is the default if flit is not in a
@@ -141,7 +183,7 @@ Flit guess.
 
    Flit calls pip to do the installation. You can set any of pip's options
    `using its environment variables
-   <https://pip.pypa.io/en/stable/user_guide/#environment-variables>`__.
+   <https://pip.pypa.io/en/stable/topics/configuration/#environment-variables>`__.
 
    When you use the :option:`--symlink` or :option:`--pth-file` options, pip
    is used to install dependencies. Otherwise, Flit builds a wheel and then
@@ -185,6 +227,10 @@ Environment variables
    Set a username, password, and index URL for uploading packages.
    See :ref:`uploading packages with environment variables <upload_envvars>`
    for more information.
+   
+   Token-based upload to PyPI is supported. To upload using a PyPI token,
+   set ``FLIT_USERNAME`` to ``__token__``, and ``FLIT_PASSWORD`` to the
+   token value.
 
 .. envvar:: FLIT_ALLOW_INVALID
 
@@ -197,7 +243,7 @@ Environment variables
    If the metadata is invalid, uploading the package to PyPI may fail. This
    environment variable provides an escape hatch in case Flit incorrectly
    rejects your valid metadata. If you need to use it and you believe your
-   metadata is valid, please `open an issue <https://github.com/takluyver/flit/issues>`__.
+   metadata is valid, please `open an issue <https://github.com/pypa/flit/issues>`__.
 
 .. envvar:: FLIT_INSTALL_PYTHON
 
