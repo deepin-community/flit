@@ -38,4 +38,7 @@ override_dh_auto_install:
 	sphinx-build -b man -D extensions='sphinx.ext.ifconfig' -D man_show_urls=True doc/ debian/
 
 override_dh_auto_test:
-	pybuild --test -d flit_core --name flit_core --test-pytest --test-args="-k 'not test_find_in_path'"
+	pybuild --test -d flit_core --name flit_core --test-pytest \
+		--test-args="-k 'not test_find_in_path'" \
+		--before-test="cp {dir}/../README.rst {dir}/../LICENSE {build_dir}" \
+		--after-test="rm -f {build_dir}/README.rst {build_dir}/LICENSE"
