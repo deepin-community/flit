@@ -1,3 +1,16 @@
+flit (3.9.0-2) unstable; urgency=medium
+
+  [ Stefano Rivera ]
+  * Team upload.
+  * Make README.rst and LICENSE available to build-time tests.
+    (Closes: #1050363)
+
+  [ Scott Kitterman ]
+  * Update B-D-I and Depends to that python3-tomli is not required with
+    python3.11 or later (flit will use tomllib is available)
+
+ -- Stefano Rivera <stefanor@debian.org>  Thu, 24 Aug 2023 18:55:36 +0200
+
 flit (3.9.0-1) unstable; urgency=medium
 
   * New upstream release
