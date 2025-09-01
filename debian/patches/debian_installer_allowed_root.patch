@@ -13,10 +13,10 @@ Last-Update: 2020-04-13
  1 file changed, 2 insertions(+), 1 deletion(-)
 
 diff --git a/flit/install.py b/flit/install.py
-index 3ea9a4b..f29326c 100644
+index 50917f1..1aa71c8 100644
 --- a/flit/install.py
 +++ b/flit/install.py
-@@ -109,7 +109,8 @@ class Installer(object):
+@@ -108,7 +108,8 @@ class Installer(object):
  
          if (hasattr(os, 'getuid') and (os.getuid() == 0) and
                  (not os.environ.get('FLIT_ROOT_INSTALL'))):

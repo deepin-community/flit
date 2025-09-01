@@ -8,14 +8,13 @@ Build-Depends: debhelper-compat (= 13),
                pybuild-plugin-pyproject,
                python3-all,
 Build-Depends-Indep:
-               python3 (>= 3.11) | python3-tomli,
                python3-tomli-w,
                python3-sphinx,
                python3-pytest,
                python3-requests,
                python3-responses,
                python3-testpath,
-Standards-Version: 4.6.2
+Standards-Version: 4.7.2
 Homepage: https://flit.readthedocs.io/en/latest/
 Rules-Requires-Root: no
 Vcs-Git: https://salsa.debian.org/python-team/packages/flit.git
@@ -24,7 +23,6 @@ Vcs-Browser: https://salsa.debian.org/python-team/packages/flit
 Package: flit
 Architecture: all
 Depends: ${misc:Depends},
-         python3 (>= 3.11) | python3-tomli,
          ${python3:Depends},
 Description: simple way to put Python packages and modules on PyPI (PEP 517)
  Flit is a easy way to put Python packages and modules on PyPI. It tries to

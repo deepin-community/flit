@@ -16,7 +16,6 @@ import sysconfig
 
 from flit_core import common
 from .config import read_flit_config
-from .wheel import WheelBuilder
 from ._get_dirs import get_dirs
 
 log = logging.getLogger(__name__)
@@ -201,6 +200,7 @@ class Installer(object):
             rel_path = os.path.relpath(src_path, self.ini_info.data_directory)
             dst_path = os.path.join(target_data_dir, rel_path)
             os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+            pathlib.Path(dst_path).unlink(missing_ok=True)
             if self.symlink:
                 os.symlink(os.path.realpath(src_path), dst_path)
             else:

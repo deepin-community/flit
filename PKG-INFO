@@ -1,18 +1,20 @@
-Metadata-Version: 2.1
+Metadata-Version: 2.4
 Name: flit
-Version: 3.9.0
+Version: 3.12.0
 Summary: A simple packaging tool for simple packages.
 Author-email: Thomas Kluyver <thomas@kluyver.me.uk>
-Requires-Python: >=3.6
+Requires-Python: >=3.8
 Description-Content-Type: text/x-rst
+License-Expression: BSD-3-Clause
 Classifier: Intended Audience :: Developers
-Classifier: License :: OSI Approved :: BSD License
 Classifier: Programming Language :: Python :: 3
 Classifier: Topic :: Software Development :: Libraries :: Python Modules
-Requires-Dist: flit_core >=3.9.0
+License-File: LICENSE
+Requires-Dist: flit_core >=3.12.0
 Requires-Dist: requests
 Requires-Dist: docutils
 Requires-Dist: tomli-w
+Requires-Dist: pip
 Requires-Dist: sphinx ; extra == "doc"
 Requires-Dist: sphinxcontrib_github_alt ; extra == "doc"
 Requires-Dist: pygments-github-lexers ; extra == "doc"

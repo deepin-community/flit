@@ -1,6 +1,8 @@
+from os.path import isabs, basename, dirname
 import os
 import re
 import sys
+import venv
 
 import pytest
 
@@ -16,11 +18,28 @@ def test_self():
 
 
 def test_abs():
-    assert find_python_executable("/usr/bin/python") == "/usr/bin/python"
+    abs_path = "C:\\PythonXY\\python.exe" if os.name == 'nt' else '/usr/bin/python'
+    assert find_python_executable(abs_path) == abs_path
 
 
 def test_find_in_path():
-    assert os.path.isabs(find_python_executable("python"))
+    assert isabs(find_python_executable("python"))
+
+
+def test_env(tmp_path):
+    path = tmp_path / "venv"
+    venv.create(path)
+
+    executable = find_python_executable(path)
+    assert basename(dirname(dirname(executable))) == "venv"
+
+
+def test_env_abs(tmp_path, monkeypatch):
+    path = tmp_path / "venv"
+    venv.create(path)
+
+    monkeypatch.chdir(tmp_path)
+    assert isabs(find_python_executable("venv"))
 
 
 @pytest.mark.parametrize("bad_python_name", ["pyhton", "ls", "."])

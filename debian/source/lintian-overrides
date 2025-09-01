@@ -3,5 +3,3 @@ flit source: missing-prerequisite-for-pyproject-backend
 # override_dh_auto_test does not need to check DEB_BUILD_OPTIONS
 # for debhelper compat level 13 or greater (see #568897 for details)
 flit source: override_dh_auto_test-does-not-check-DEB_BUILD_OPTIONS
-# Doesn't actually use distutiles, this is a template for setup.py generation
-flit source: uses-python-distutils

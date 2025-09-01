@@ -39,9 +39,17 @@ def test_main(tmp_path):
     with ZipFile(wheels[0], 'r') as zf:
         assert 'module1a.py' in zf.namelist()
 
-        
+
 def test_data_dir(tmp_path):
     info = make_wheel_in(samples_dir / 'with_data_dir' / 'pyproject.toml', tmp_path)
     assert_isfile(info.file)
     with ZipFile(info.file, 'r') as zf:
         assert 'module1-0.1.data/data/share/man/man1/foo.1' in zf.namelist()
+
+
+def test_license_files(tmp_path):
+    info = make_wheel_in(samples_dir / 'pep621_license_files' / 'pyproject.toml', tmp_path)
+    assert_isfile(info.file)
+    with ZipFile(info.file, 'r') as zf:
+        assert 'module1-0.1.dist-info/licenses/LICENSE' in zf.namelist()
+        assert 'module1-0.1.dist-info/licenses/module/vendor/LICENSE_VENDOR' in zf.namelist()
