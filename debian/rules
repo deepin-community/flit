@@ -8,7 +8,7 @@ export FLIT_ROOT_INSTALL=1
 include /usr/share/dpkg/pkg-info.mk
 
 %:
-	dh $@ --with python3 --buildsystem=pybuild
+	dh $@ --buildsystem=pybuild
 
 override_dh_auto_clean:
 	set -e; \
@@ -39,6 +39,5 @@ override_dh_auto_install:
 
 override_dh_auto_test:
 	pybuild --test -d flit_core --name flit_core --test-pytest \
-		--test-args="-k 'not test_find_in_path'" \
-		--before-test="cp {dir}/../README.rst {dir}/../LICENSE {build_dir}" \
-		--after-test="rm -f {build_dir}/README.rst {build_dir}/LICENSE"
+		--before-test="cp -R {dir}/../README.rst {dir}/../LICENSE {dir}/tests_core {build_dir}" \
+		--after-test="rm -rf {build_dir}/README.rst {build_dir}/LICENSE {build_dir}/tests_core"

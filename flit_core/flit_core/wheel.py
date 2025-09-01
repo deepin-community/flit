@@ -1,7 +1,7 @@
 import argparse
 from base64 import urlsafe_b64encode
 import contextlib
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
 import io
 import logging
@@ -42,7 +42,8 @@ def zip_timestamp_from_env() -> Optional[tuple]:
     try:
         # If SOURCE_DATE_EPOCH is set (e.g. by Debian), it's used for
         # timestamps inside the zip file.
-        d = datetime.utcfromtimestamp(int(os.environ['SOURCE_DATE_EPOCH']))
+        t = int(os.environ['SOURCE_DATE_EPOCH'])
+        d = datetime.fromtimestamp(t, timezone.utc)
     except (KeyError, ValueError):
         # Otherwise, we'll use the mtime of files, and generated files will
         # default to 2016-1-1 00:00:00
@@ -182,10 +183,8 @@ class WheelBuilder:
             with self._write_to_zip(self.dist_info + '/entry_points.txt') as f:
                 common.write_entry_points(self.entrypoints, f)
 
-        for base in ('COPYING', 'LICENSE'):
-            for path in sorted(self.directory.glob(base + '*')):
-                if path.is_file():
-                    self._add_file(path, '%s/%s' % (self.dist_info, path.name))
+        for file in self.metadata.license_files:
+            self._add_file(self.directory / file, '%s/licenses/%s' % (self.dist_info, file))
 
         with self._write_to_zip(self.dist_info + '/WHEEL') as f:
             _write_wheel_file(f, supports_py2=self.metadata.supports_py2)

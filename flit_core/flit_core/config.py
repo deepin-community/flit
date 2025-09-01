@@ -17,6 +17,8 @@ except ImportError:
     except ImportError:
         import tomli as tomllib
 
+from ._spdx_data import licenses
+from .common import normalise_core_metadata_name
 from .versionno import normalise_version
 
 log = logging.getLogger(__name__)
@@ -58,6 +60,7 @@ pep621_allowed_fields = {
     'readme',
     'requires-python',
     'license',
+    'license-files',
     'authors',
     'maintainers',
     'keywords',
@@ -70,6 +73,9 @@ pep621_allowed_fields = {
     'optional-dependencies',
     'dynamic',
 }
+
+default_license_files_globs = ['COPYING*', 'LICEN[CS]E*']
+license_files_allowed_chars = re.compile(r'^[\w\-\.\/\*\?\[\]]+$')
 
 
 def read_flit_config(path):
@@ -86,7 +92,7 @@ class EntryPointsConflict(ConfigError):
 
 def prep_toml_config(d, path):
     """Validate config loaded from pyproject.toml and prepare common metadata
-    
+
     Returns a LoadedConfig object.
     """
     dtool = d.get('tool', {}).get('flit', {})
@@ -162,7 +168,7 @@ def prep_toml_config(d, path):
             raise ConfigError(f"{toml_key} must be a string")
 
         normp = osp.normpath(data_dir)
-        if osp.isabs(normp):
+        if isabs_ish(normp):
             raise ConfigError(f"{toml_key} cannot be an absolute path")
         if normp.startswith('..' + os.sep):
             raise ConfigError(
@@ -232,9 +238,9 @@ def _check_glob_patterns(pats, clude):
 
         normp = osp.normpath(p)
 
-        if osp.isabs(normp):
+        if isabs_ish(normp):
             raise ConfigError(
-                '{} pattern {!r} is an absolute path'.format(clude, p)
+                f'{clude} pattern {p!r} is an absolute path'
             )
         if normp.startswith('..' + os.sep):
             raise ConfigError(
@@ -273,7 +279,7 @@ readme_ext_to_content_type = {
 
 
 def description_from_file(rel_path: str, proj_dir: Path, guess_mimetype=True):
-    if osp.isabs(rel_path):
+    if isabs_ish(rel_path):
         raise ConfigError("Readme path must be relative")
 
     desc_path = proj_dir / rel_path
@@ -304,11 +310,11 @@ def description_from_file(rel_path: str, proj_dir: Path, guess_mimetype=True):
 
 def _prep_metadata(md_sect, path):
     """Process & verify the metadata from a config file
-    
+
     - Pull out the module name we're packaging.
     - Read description-file and check that it's valid rst
     - Convert dashes in key names to underscores
-      (e.g. home-page in config -> home_page in metadata) 
+      (e.g. home-page in config -> home_page in metadata)
     """
     if not set(md_sect).issuperset(metadata_required_fields):
         missing = metadata_required_fields - set(md_sect)
@@ -381,7 +387,31 @@ def _prep_metadata(md_sect, path):
 
     # Move dev-requires into requires-extra
     reqs_noextra = md_dict.pop('requires_dist', [])
-    res.reqs_by_extra = md_dict.pop('requires_extra', {})
+
+    reqs_extra = md_dict.pop('requires_extra', {})
+    extra_names_by_normed = {}
+    for e, reqs in reqs_extra.items():
+        if not all(isinstance(a, str) for a in reqs):
+            raise ConfigError(
+                f'Expected a string list for requires-extra group {e}'
+            )
+        if not name_is_valid(e):
+            raise ConfigError(
+                f'requires-extra group name {e!r} is not valid'
+            )
+        enorm = normalise_core_metadata_name(e)
+        extra_names_by_normed.setdefault(enorm, set()).add(e)
+        res.reqs_by_extra[enorm] = reqs
+
+    clashing_extra_names = [
+        g for g in extra_names_by_normed.values() if len(g) > 1
+    ]
+    if clashing_extra_names:
+        fmted = ['/'.join(sorted(g)) for g in clashing_extra_names]
+        raise ConfigError(
+            f"requires-extra group names clash: {'; '.join(fmted)}"
+        )
+
     dev_requires = md_dict.pop('dev_requires', None)
     if dev_requires is not None:
         if 'dev' in res.reqs_by_extra:
@@ -401,6 +431,15 @@ def _prep_metadata(md_sect, path):
     # For internal use, record the main requirements as a '.none' extra.
     res.reqs_by_extra['.none'] = reqs_noextra
 
+    if path:
+        license_files = sorted(
+            _license_files_from_globs(
+                path.parent, default_license_files_globs, warn_no_files=False
+            )
+        )
+        res.referenced_files.extend(license_files)
+        md_dict['license_files'] = license_files
+
     return res
 
 def _expand_requires_extra(re):
@@ -413,10 +452,55 @@ def _expand_requires_extra(re):
                 yield '{} ; extra == "{}"'.format(req, extra)
 
 
+def _license_files_from_globs(project_dir: Path, globs, warn_no_files = True):
+    license_files = set()
+    for pattern in globs:
+        if isabs_ish(pattern):
+            raise ConfigError(
+                "Invalid glob pattern for [project.license-files]: '{}'. "
+                "Pattern must not start with '/'.".format(pattern)
+            )
+        if ".." in pattern:
+            raise ConfigError(
+                "Invalid glob pattern for [project.license-files]: '{}'. "
+                "Pattern must not contain '..'".format(pattern)
+            )
+        if license_files_allowed_chars.match(pattern) is None:
+            raise ConfigError(
+                "Invalid glob pattern for [project.license-files]: '{}'. "
+                "Pattern contains invalid characters. "
+                "https://packaging.python.org/en/latest/specifications/pyproject-toml/#license-files"
+            )
+        try:
+            files = [
+                file.relative_to(project_dir).as_posix()
+                for file in project_dir.glob(pattern)
+                if file.is_file()
+            ]
+        except ValueError as ex:
+            raise ConfigError(
+                "Invalid glob pattern for [project.license-files]: '{}'. {}".format(pattern, ex.args[0])
+            )
+
+        if not files and warn_no_files:
+            raise ConfigError(
+                "No files found for [project.license-files]: '{}' pattern".format(pattern)
+            )
+        license_files.update(files)
+    return license_files
+
 def _check_type(d, field_name, cls):
     if not isinstance(d[field_name], cls):
         raise ConfigError(
             "{} field should be {}, not {}".format(field_name, cls, type(d[field_name]))
+        )
+
+def _check_types(d, field_name, cls_list) -> None:
+    if not isinstance(d[field_name], cls_list):
+        raise ConfigError(
+            "{} field should be {}, not {}".format(
+                field_name, ' or '.join(map(str, cls_list)), type(d[field_name])
+            )
         )
 
 def _check_list_of_str(d, field_name):
@@ -434,6 +518,8 @@ def read_pep621_metadata(proj, path) -> LoadedConfig:
     if 'name' not in proj:
         raise ConfigError('name must be specified in [project] table')
     _check_type(proj, 'name', str)
+    if not name_is_valid(proj['name']):
+        raise ConfigError(f"name {proj['name']} is not valid")
     md_dict['name'] = proj['name']
     lc.module = md_dict['name'].replace('-', '_')
 
@@ -497,31 +583,66 @@ def read_pep621_metadata(proj, path) -> LoadedConfig:
     if 'requires-python' in proj:
         md_dict['requires_python'] = proj['requires-python']
 
+    license_files = set()
     if 'license' in proj:
-        _check_type(proj, 'license', dict)
-        license_tbl = proj['license']
-        unrec_keys = set(license_tbl.keys()) - {'text', 'file'}
-        if unrec_keys:
-            raise ConfigError(
-                "Unrecognised keys in [project.license]: {}".format(unrec_keys)
-            )
-
-        # TODO: Do something with license info.
-        # The 'License' field in packaging metadata is a brief description of
-        # a license, not the full text or a file path. PEP 639 will improve on
-        # how licenses are recorded.
-        if 'file' in license_tbl:
-            if 'text' in license_tbl:
-                raise ConfigError(
-                    "[project.license] should specify file or text, not both"
-                )
-            lc.referenced_files.append(license_tbl['file'])
-        elif 'text' in license_tbl:
-            pass
+        _check_types(proj, 'license', (str, dict))
+        if isinstance(proj['license'], str):
+            licence_expr = proj['license']
+            md_dict['license_expression'] = normalise_compound_license_expr(licence_expr)
         else:
+            license_tbl = proj['license']
+            unrec_keys = set(license_tbl.keys()) - {'text', 'file'}
+            if unrec_keys:
+                raise ConfigError(
+                    "Unrecognised keys in [project.license]: {}".format(unrec_keys)
+                )
+
+            # The 'License' field in packaging metadata is a brief description of
+            # a license, not the full text or a file path.
+            if 'file' in license_tbl:
+                if 'text' in license_tbl:
+                    raise ConfigError(
+                        "[project.license] should specify file or text, not both"
+                    )
+                license_f = osp.normpath(license_tbl['file'])
+                if isabs_ish(license_f):
+                    raise ConfigError(
+                        f"License file path ({license_tbl['file']}) cannot be an absolute path"
+                    )
+                if license_f.startswith('..' + os.sep):
+                    raise ConfigError(
+                        f"License file path ({license_tbl['file']}) cannot contain '..'"
+                    )
+                license_p = path.parent / license_f
+                if not license_p.is_file():
+                    raise ConfigError(f"License file {license_tbl['file']} does not exist")
+                license_f = license_p.relative_to(path.parent).as_posix()
+                license_files.add(license_f)
+            elif 'text' in license_tbl:
+                pass
+            else:
+                raise ConfigError(
+                    "file or text field required in [project.license] table"
+                )
+
+    if 'license-files' in proj:
+        _check_type(proj, 'license-files', list)
+        globs = proj['license-files']
+        license_files = _license_files_from_globs(path.parent, globs)
+        if isinstance(proj.get('license'), dict):
             raise ConfigError(
-                "file or text field required in [project.license] table"
+                "license-files cannot be used with a license table, "
+                "use 'project.license' with a license expression instead"
             )
+    else:
+        license_files.update(
+            _license_files_from_globs(
+                path.parent, default_license_files_globs, warn_no_files=False
+            )
+        )
+    license_files_sorted = sorted(license_files)
+    lc.referenced_files.extend(license_files_sorted)
+    md_dict['license_files'] = license_files_sorted
 
     if 'authors' in proj:
         _check_type(proj, 'authors', list)
@@ -537,6 +658,16 @@ def read_pep621_metadata(proj, path) -> LoadedConfig:
 
     if 'classifiers' in proj:
         _check_list_of_str(proj, 'classifiers')
+        classifiers = proj['classifiers']
+        license_expr = md_dict.get('license_expression', None)
+        if license_expr:
+            for cl in classifiers:
+                if not cl.startswith('License :: '):
+                    continue
+                raise ConfigError(
+                    "License classifiers are deprecated in favor of the license expression. "
+                    "Remove the '{}' classifier".format(cl)
+                )
         md_dict['classifiers'] = proj['classifiers']
 
     if 'urls' in proj:
@@ -592,13 +723,29 @@ def read_pep621_metadata(proj, path) -> LoadedConfig:
             raise ConfigError(
                 'Expected a dict of lists in optional-dependencies field'
             )
+        extra_names_by_normed = {}
         for e, reqs in optdeps.items():
             if not all(isinstance(a, str) for a in reqs):
                 raise ConfigError(
                     'Expected a string list for optional-dependencies ({})'.format(e)
                 )
+            if not name_is_valid(e):
+                raise ConfigError(
+                    f'optional-dependencies group name {e!r} is not valid'
+                )
+            enorm = normalise_core_metadata_name(e)
+            extra_names_by_normed.setdefault(enorm, set()).add(e)
+            lc.reqs_by_extra[enorm] = reqs
 
-        lc.reqs_by_extra = optdeps.copy()
+        clashing_extra_names = [
+            g for g in extra_names_by_normed.values() if len(g) > 1
+        ]
+        if clashing_extra_names:
+            fmted = ['/'.join(sorted(g)) for g in clashing_extra_names]
+            raise ConfigError(
+                f"optional-dependencies group names clash: {'; '.join(fmted)}"
+            )
+
         md_dict['provides_extra'] = sorted(lc.reqs_by_extra.keys())
 
     md_dict['requires_dist'] = \
@@ -633,6 +780,13 @@ def read_pep621_metadata(proj, path) -> LoadedConfig:
 
     return lc
 
+
+def name_is_valid(name) -> bool:
+    return bool(re.match(
+        r"^([A-Z0-9]|[A-Z0-9][A-Z0-9._-]*[A-Z0-9])$", name, re.IGNORECASE
+    ))
+
+
 def pep621_people(people, group_name='author') -> dict:
     """Convert authors/maintainers from PEP 621 to core metadata fields"""
     names, emails = [], []
@@ -658,3 +812,108 @@ def pep621_people(people, group_name='author') -> dict:
     if emails:
         res[group_name + '_email'] = ", ".join(emails)
     return res
+
+
+def isabs_ish(path):
+    """Like os.path.isabs(), but Windows paths from a drive root count as absolute
+
+    isabs() worked this way up to Python 3.12 (inclusive), and where we reject
+    absolute paths, we also want to reject these odd halfway paths.
+    """
+    return os.path.isabs(path) or path.startswith(('/', '\\'))
+
+
+def normalise_compound_license_expr(s: str) -> str:
+    """Validate and normalise a compund SPDX license expression.
+
+    Per the specification, licence expression operators (AND, OR and WITH)
+    are matched case-sensitively. The WITH operator is not currently supported.
+
+    Spec: https://spdx.github.io/spdx-spec/v2.2.2/SPDX-license-expressions/
+    """
+    invalid_msg = "'{s}' is not a valid SPDX license expression: {reason}"
+    if not s or s.isspace():
+        raise ConfigError(f"The SPDX license expression must not be empty")
+
+    stack = 0
+    parts = []
+    try:
+        for part in filter(None, re.split(r' +|([()])', s)):
+            if part.upper() == 'WITH':
+                # provide a sensible error message for the WITH operator
+                raise ConfigError(f"The SPDX 'WITH' operator is not yet supported!")
+            elif part in {'AND', 'OR'}:
+                if not parts or parts[-1] in {' AND ', ' OR ', ' WITH ', '('}:
+                    reason = f"a license ID is missing before '{part}'"
+                    raise ConfigError(invalid_msg.format(s=s, reason=reason))
+                parts.append(f' {part} ')
+            elif part.lower() in {'and', 'or', 'with'}:
+                # provide a sensible error message for non-uppercase operators
+                reason = f"operators must be uppercase, not '{part}'"
+                raise ConfigError(invalid_msg.format(s=s, reason=reason))
+            elif part == '(':
+                if parts and parts[-1] not in {' AND ', ' OR ', '('}:
+                    reason = f"'(' must follow either AND, OR, or '('"
+                    raise ConfigError(invalid_msg.format(s=s, reason=reason))
+                stack += 1
+                parts.append(part)
+            elif part == ')':
+                if not parts or parts[-1] in {' AND ', ' OR ', ' WITH ', '('}:
+                    reason = f"a license ID is missing before '{part}'"
+                    raise ConfigError(invalid_msg.format(s=s, reason=reason))
+                stack -= 1
+                if stack < 0:
+                    reason = 'unbalanced brackets'
+                    raise ConfigError(invalid_msg.format(s=s, reason=reason))
+                parts.append(part)
+            else:
+                if parts and parts[-1] not in {' AND ', ' OR ', '('}:
+                    reason = f"a license ID must follow either AND, OR, or '('"
+                    raise ConfigError(invalid_msg.format(s=s, reason=reason))
+                simple_expr = normalise_simple_license_expr(part)
+                parts.append(simple_expr)
+
+        if stack != 0:
+            reason = 'unbalanced brackets'
+            raise ConfigError(invalid_msg.format(s=s, reason=reason))
+        if parts[-1] in {' AND ', ' OR ', ' WITH '}:
+            last_part = parts[-1].strip()
+            reason = f"a license ID or expression should follow '{last_part}'"
+            raise ConfigError(invalid_msg.format(s=s, reason=reason))
+    except ConfigError:
+        if os.environ.get('FLIT_ALLOW_INVALID'):
+            log.warning(f"Invalid license ID {s!r} allowed by FLIT_ALLOW_INVALID")
+            return s
+        raise
+
+    return ''.join(parts)
+
+
+def normalise_simple_license_expr(s: str) -> str:
+    """Normalise a simple SPDX license expression.
+
+    https://spdx.github.io/spdx-spec/v2.2.2/SPDX-license-expressions/#d3-simple-license-expressions
+    """
+    ls = s.lower()
+    if ls.startswith('licenseref-'):
+        ref = s[11:]
+        if re.fullmatch(r'[a-zA-Z0-9\-.]+', ref):
+            # Normalise case of LicenseRef, leave the rest alone
+            return f"LicenseRef-{ref}"
+        raise ConfigError(
+            "LicenseRef- license expression can only contain ASCII letters "
+            "& digits, - and ."
+        )
+
+    or_later = ls.endswith('+')
+    if or_later:
+        ls = ls[:-1]
+
+    try:
+        normalised_id = licenses[ls]['id']
+    except KeyError:
+        raise ConfigError(f"{s!r} is not a recognised SPDX license ID")
+
+    if or_later:
+        return f'{normalised_id}+'
+    return normalised_id

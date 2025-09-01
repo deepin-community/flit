@@ -9,12 +9,12 @@ Forwarded: not-needed
  1 file changed, 1 insertion(+)
 
 diff --git a/pyproject.toml b/pyproject.toml
-index 5292a41..1f51a69 100644
+index 23514cf..0dd6794 100644
 --- a/pyproject.toml
 +++ b/pyproject.toml
 @@ -1,6 +1,7 @@
  [build-system]
- requires = ["flit_core >=3.9.0,<4"]
+ requires = ["flit_core >=3.11,<4"]
  build-backend = "flit_core.buildapi"
 +backend-path = ["flit_core"]
  

@@ -75,6 +75,11 @@ class ModuleTests(TestCase):
                                 'version': '0.1'}
                          )
 
+        info = get_info_from_module(Module('module1', samples_dir / 'annotated_version'))
+        self.assertEqual(info, {'summary': 'This module has a __version__ that has a type annotation',
+                                'version': '0.1'}
+                         )
+
         info = get_info_from_module(Module('module1', samples_dir / 'constructed_version'))
         self.assertEqual(info, {'summary': 'This module has a __version__ that requires runtime interpretation',
                                 'version': '1.2.3'}
@@ -155,4 +160,81 @@ def test_metadata_multiline(tmp_path):
     assert msg['Name'] == d['name']
     assert msg['Version'] == d['version']
     assert [l.lstrip() for l in msg['Author'].splitlines()] == d['author'].splitlines()
+    assert not msg.defects
+
+@pytest.mark.parametrize(
+    ("requires_dist", "expected_result"),
+    [
+        ('foo [extra_1, extra.2, extra-3, extra__4, extra..5, extra--6]', 'foo [extra-1, extra-2, extra-3, extra-4, extra-5, extra-6]'),
+        ('foo', 'foo'),
+        ('foo[bar]', 'foo[bar]'),
+        # https://packaging.python.org/en/latest/specifications/core-metadata/#requires-dist-multiple-use
+        ('pkginfo', 'pkginfo'),
+        ('zope.interface (>3.5.0)', 'zope.interface (>3.5.0)'),
+        ("pywin32 >1.0; sys_platform == 'win32'", "pywin32 >1.0; sys_platform == 'win32'"),
+    ],
+)
+def test_metadata_2_3_requires_dist(requires_dist, expected_result):
+    d = {
+        'name': 'foo',
+        'version': '1.0',
+        'requires_dist': [requires_dist],
+    }
+    md = Metadata(d)
+    sio = StringIO()
+    md.write_metadata_file(sio)
+    sio.seek(0)
+
+    msg = email.parser.Parser(policy=email.policy.compat32).parse(sio)
+    assert msg['Requires-Dist'] == expected_result
+    assert not msg.defects
+
+@pytest.mark.parametrize(
+    ("provides_extra", "expected_result"),
+    [
+        ('foo', 'foo'),
+        ('foo__bar..baz', 'foo-bar-baz'),
+    ],
+)
+def test_metadata_2_3_provides_extra(provides_extra, expected_result):
+    d = {
+        'name': 'foo',
+        'version': '1.0',
+        'provides_extra': [provides_extra],
+    }
+    md = Metadata(d)
+    sio = StringIO()
+    md.write_metadata_file(sio)
+    sio.seek(0)
+
+    msg = email.parser.Parser(policy=email.policy.compat32).parse(sio)
+    assert msg['Provides-Extra'] == expected_result
+    assert not msg.defects
+
+@pytest.mark.parametrize(
+    ('value', 'expected_license', 'expected_license_expression'),
+    [
+        ({'license': 'MIT'}, 'MIT', None),
+        ({'license': 'MIT OR Apache-2.0'}, 'MIT OR Apache-2.0', None),
+        ({'license': 'MIT AND Apache-2.0'}, 'MIT AND Apache-2.0', None),
+        ({'license_expression': 'MIT'}, None, 'MIT'),
+        ({'license_expression': 'Apache-2.0'}, None, 'Apache-2.0'),
+        ({'license_expression': 'MIT OR Apache-2.0'}, None, 'MIT OR Apache-2.0'),
+        ({'license_expression': 'MIT AND Apache-2.0'}, None, 'MIT AND Apache-2.0'),
+    ],
+)
+def test_metadata_license(value, expected_license, expected_license_expression):
+    d = {
+        'name': 'foo',
+        'version': '1.0',
+        **value,
+    }
+    md = Metadata(d)
+    sio = StringIO()
+    md.write_metadata_file(sio)
+    sio.seek(0)
+
+    msg = email.parser.Parser(policy=email.policy.compat32).parse(sio)
+    assert msg.get('License') == expected_license
+    assert msg.get('License-Expression') == expected_license_expression
     assert not msg.defects

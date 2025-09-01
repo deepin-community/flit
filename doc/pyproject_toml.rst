@@ -20,13 +20,15 @@ defined by PEP 517. For any new project using Flit, it will look like this:
 .. code-block:: toml
 
     [build-system]
-    requires = ["flit_core >=3.2,<4"]
+    requires = ["flit_core >=3.11,<4"]
     build-backend = "flit_core.buildapi"
 
 Version constraints:
 
 - For now, all packages should specify ``<4``, so they won't be impacted by
   changes in the next major version.
+- ``license-files`` and license expressions in the ``license`` field require
+  ``flit_core >=3.11``.
 - :ref:`pyproject_toml_project` requires ``flit_core >=3.2``
 - :ref:`pyproject_old_metadata` requires ``flit_core >=2,<4``
 - The older :doc:`flit.ini file <flit_ini>` requires ``flit_core <3``.
@@ -59,9 +61,7 @@ A simple ``[project]`` table might look like this:
         {name = "Thomas Kluyver", email = "thomas@kluyver.me.uk"},
     ]
     readme = "README.rst"
-    classifiers = [
-        "License :: OSI Approved :: MIT License",
-    ]
+    license = "MIT"
     requires-python = ">=3.5"
     dynamic = ["version", "description"]
 
@@ -96,8 +96,12 @@ requires-python
   A version specifier for the versions of Python this requires, e.g. ``~=3.3`` or
   ``>=3.3,<4``, which are equivalents.
 license
-  A table with either a ``file`` key (a relative path to a license file) or a
+  A valid SPDX `license expression <https://peps.python.org/pep-0639/#term-license-expression>`_
+  or a table with either a ``file`` key (a relative path to a license file) or a
   ``text`` key (the license text).
+license-files
+  A list of glob patterns for license files to include.
+  Defaults to ``['COPYING*', 'LICEN[CS]E*']``.
 authors
   A list of tables with ``name`` and ``email`` keys (both optional) describing
   the authors of the project.

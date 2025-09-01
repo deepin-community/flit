@@ -1,6 +1,65 @@
 Release history
 ===============
 
+Version 3.12
+------------
+
+- Support for license expressions using the AND and OR operators (:ghpull:`731`).
+- Recognise ``__version__: str = "0.1"`` annotated assignments when finding the
+  version number (:ghpull:`728`).
+- Clear error message when referring to a license file in a parent directory,
+  which is not supported (:ghpull:`725`).
+
+Version 3.11
+------------
+
+- Support for SPDX license expressions and multiple license files, as detailed
+  in :pep:`639`::
+
+        license = "BSD-3-Clause"
+        license-files = ["LICENSE"]
+
+  For now, only a single license identifier is allowed. More complex expressions
+  describing multiple licenses & expressions may be supported in a future
+  version.
+- The `metadata format <https://packaging.python.org/en/latest/specifications/core-metadata/>`_
+  in produced packages is now version 2.4, to support the expanded license
+  information.
+
+Version 3.10.1
+--------------
+
+- The sdist of ``flit_core`` now includes the corresponding tests (:ghpull:`704`).
+  These were missing in 3.10.
+
+Version 3.10
+------------
+
+- ``flit publish`` can now use PyPI tokens stored in keyring (:ghpull:`649`),
+  either project tokens with a 'username' like
+  :samp:`pypi_token:project:{project_name}` (use the `normalised form of the
+  name <https://packaging.python.org/en/latest/specifications/name-normalization/>`_)
+  or user tokens (:samp:`pypi_token:user:{username}`).
+- The ``--python`` option can now take the path of a virtualenv folder, as an
+  alternative to a Python executable (:ghpull:`667`).
+- Flit will work with current development versions of Pythona again (:ghpull:`684`).
+- The ``flit`` command line package now requires Python 3.8 or above (:ghpulL:`660`).
+  ``flit_core`` still works with Python 3.6 or above.
+- The metadata in packages now has the names of optional dependency groups
+  ("extras") normalised, complying with version 2.3 of the metadata standard
+  (:ghpull:`676`, :ghpull:`697`).
+- The ``flit`` command line package now depends on pip (:ghpull:`647`).
+- Fix potential substitution of environment variables into passwords read from
+  ``.pypirc`` files (:ghpull:`652`).
+- A warning is now shown when building packages which specify the old
+  ``flit.buildapi`` backend, which should be replaced by ``flit_core.buildapi``
+  (:ghpull:`674`). It's a good idea to always set a maximum version for the
+  build requirement, to protect against changes in future major versions of Flit.
+- Avoid using the deprecated ``datetime.utcfromtimestamp()`` (:ghpull:`682`).
+- Flit now has a ``SECURITY.md`` file in the Github repository (:ghpull:`665`).
+- The tests for ``flit_core`` are no longer part of the installed package,
+  reducing the size of the wheels (:ghpull:`691`).
+
 Version 3.9
 -----------
 
@@ -12,7 +71,7 @@ Version 3.9
 - Sdist file names, and the name of the top-level folder in an sdist, are now
   normalised, in accordance with :pep:`625` (:ghpull:`628`).
 - A statically defined version number can now be parsed from files called
-  ``version.py``, ``_version.py`` or ``__version__.py`` inside a packge, as well
+  ``version.py``, ``_version.py`` or ``__version__.py`` inside a package, as well
   as from ``__init__.py``, so executing code is required in fewer cases
   (:ghpull:`630`).
 - Fix setting the flag for regular files in zip metadata (:ghpull:`639`).

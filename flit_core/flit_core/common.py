@@ -148,21 +148,27 @@ def get_docstring_and_version_via_ast(target):
         with target_path.open('rb') as f:
             node = ast.parse(f.read())
         for child in node.body:
-            # Only use the version from the given module if it's a simple
-            # string assignment to __version__
-            is_version_str = (
-                    isinstance(child, ast.Assign)
-                    and any(
-                        isinstance(target, ast.Name)
-                        and target.id == "__version__"
-                        for target in child.targets
-                    )
-                    and isinstance(child.value, ast.Str)
-            )
-            if is_version_str:
-                version = child.value.s
+            if is_version_str_assignment(child):
+                if sys.version_info >= (3, 8):
+                    version = child.value.value
+                else:
+                    version = child.value.s
                 break
     return ast.get_docstring(node), version
+
+
+def is_version_str_assignment(node):
+    """Check if *node* is a simple string assignment to __version__"""
+    if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+        return False
+    constant_type = ast.Constant if sys.version_info >= (3, 8) else ast.Str
+    if not isinstance(node.value, constant_type):
+        return False
+    targets = (node.target,) if isinstance(node, ast.AnnAssign) else node.targets
+    for target in targets:
+        if isinstance(target, ast.Name) and target.id == "__version__":
+            return True
+    return False
 
 
 # To ensure we're actually loading the specified file, give it a unique name to
@@ -329,6 +335,7 @@ class Metadata(object):
     maintainer = None
     maintainer_email = None
     license = None
+    license_expression = None
     description = None
     keywords = None
     download_url = None
@@ -347,8 +354,10 @@ class Metadata(object):
     obsoletes_dist = ()
     requires_external = ()
     provides_extra = ()
+    license_files = ()
+    dynamic = ()
 
-    metadata_version = "2.1"
+    metadata_version = "2.4"
 
     def __init__(self, data):
         data = data.copy()
@@ -359,8 +368,26 @@ class Metadata(object):
             assert hasattr(self, k), "data does not have attribute '{}'".format(k)
             setattr(self, k, v)
 
-    def _normalise_name(self, n):
+    def _normalise_field_name(self, n):
         return n.lower().replace('-', '_')
+
+    def _extract_extras(self, req):
+        match = re.search(r'\[([^]]*)\]', req)
+        if match:
+            list_str = match.group(1)
+            return [item.strip() for item in list_str.split(',')]
+        else:
+            return None
+
+    def _normalise_requires_dist(self, req):
+        extras = self._extract_extras(req)
+        if extras:
+            normalised_extras = [normalise_core_metadata_name(extra) for extra in extras]
+            normalised_extras_str = ', '.join(normalised_extras)
+            normalised_req = re.sub(r'\[([^]]*)\]', f"[{normalised_extras_str}]", req)
+            return normalised_req
+        else:
+            return req
 
     def write_metadata_file(self, fp):
         """Write out metadata in the email headers format"""
@@ -372,7 +399,6 @@ class Metadata(object):
         optional_fields = [
             'Summary',
             'Home-page',
-            'License',
             'Keywords',
             'Author',
             'Author-email',
@@ -383,11 +409,11 @@ class Metadata(object):
         ]
 
         for field in fields:
-            value = getattr(self, self._normalise_name(field))
+            value = getattr(self, self._normalise_field_name(field))
             fp.write(u"{}: {}\n".format(field, value))
 
         for field in optional_fields:
-            value = getattr(self, self._normalise_name(field))
+            value = getattr(self, self._normalise_field_name(field))
             if value is not None:
                 # TODO: verify which fields can be multiline
                 # The spec has multiline examples for Author, Maintainer &
@@ -396,17 +422,30 @@ class Metadata(object):
                 value = '\n        '.join(value.splitlines())
                 fp.write(u"{}: {}\n".format(field, value))
 
+
+        license_expr = getattr(self, self._normalise_field_name("License-Expression"))
+        license = getattr(self, self._normalise_field_name("License"))
+        if license_expr:
+            fp.write(u'License-Expression: {}\n'.format(license_expr))
+        elif license:  # Deprecated, superseded by License-Expression
+            fp.write(u'License: {}\n'.format(license))
+
         for clsfr in self.classifiers:
             fp.write(u'Classifier: {}\n'.format(clsfr))
 
+        for file in self.license_files:
+            fp.write(u'License-File: {}\n'.format(file))
+
         for req in self.requires_dist:
-            fp.write(u'Requires-Dist: {}\n'.format(req))
+            normalised_req = self._normalise_requires_dist(req)
+            fp.write(u'Requires-Dist: {}\n'.format(normalised_req))
 
         for url in self.project_urls:
             fp.write(u'Project-URL: {}\n'.format(url))
 
         for extra in self.provides_extra:
-            fp.write(u'Provides-Extra: {}\n'.format(extra))
+            normalised_extra = normalise_core_metadata_name(extra)
+            fp.write(u'Provides-Extra: {}\n'.format(normalised_extra))
 
         if self.description is not None:
             fp.write(u'\n' + self.description + u'\n')
@@ -426,6 +465,10 @@ def make_metadata(module, ini_info):
     md_dict.update(ini_info.metadata)
     return Metadata(md_dict)
 
+
+def normalise_core_metadata_name(name):
+    """Normalise a project or extra name (as in PEP 503, also PEP 685)"""
+    return re.sub(r"[-_.]+", "-", name).lower()
 
 
 def normalize_dist_name(name: str, version: str) -> str:
